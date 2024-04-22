@@ -970,6 +970,14 @@ int main(int argc, char *args[]) {
             case SDLK_ESCAPE: {
               game_is_still_running = 0;
             } break;
+            case SDLK_UP: {
+              physics_context.simulation_speed += 0.5;
+              physics_context.simulation_speed = min(physics_context.simulation_speed, 10.0);
+            } break;
+            case SDLK_DOWN: {
+              physics_context.simulation_speed -= 0.5;
+              physics_context.simulation_speed = max(physics_context.simulation_speed, 0.0);
+            } break;
             default: {}
           }
         } break;
