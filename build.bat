@@ -27,7 +27,7 @@ setlocal ENABLEDELAYEDEXPANSION
     set "compilerFlags=-W4 -WX -Od -nologo -std:c++20 -Zc:strictStrings -GR- -favor:INTEL64 -cgthreads8 -MP /EHsc"
     set "ignoreWarnings=-wd4100 -wd4996"
     set "includeDirs=..\include"
-    set "linkerFlags=-INCREMENTAL:NO"
+    set "linkerFlags=-INCREMENTAL:NO -STACK:20000000"
 
     if %debugMode%==1 (
         set "compilerFlags=%compilerFlags% -FC -Z7"
