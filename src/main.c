@@ -14,7 +14,11 @@
 typedef uint8_t u8;
 typedef uint32_t u32;
 typedef uint64_t u64;
+
 typedef int32_t i32;
+
+typedef float f32;
+typedef double f64;
 
 #include "personalities.c"
 #include "seed.c"
@@ -27,12 +31,13 @@ typedef int32_t i32;
 
 #define INVALID_ENTITY (-100000000)
 #define MAX_ENTITIES 1024
+#define MAX_ENTITY_NAME_LENGTH 32
 #define SCREEN_WIDTH 1920
 #define SCREEN_HEIGHT 1080
 #define array_count(static_array) (sizeof(static_array) / sizeof((static_array)[0]))
 /***
  * Taken from SDL.
- * NOTE: these double-evaluate their arguments, so you should never have side effects in the parameters
+ * NOTE: these f64-evaluate their arguments, so you should never have side effects in the parameters
  *      (e.g. SDL_min(x++, 10) is bad).
  */
 #define min(x, y) (((x) < (y)) ? (x) : (y))
@@ -43,54 +48,61 @@ typedef int32_t i32;
   fflush(stdout)
 
 typedef struct {
-  float x;
-  float y;
+  i32 x;
+  i32 y;
+} IVec2;
+
+typedef struct {
+  f32 x;
+  f32 y;
 } Vec2;
 
-typedef struct FRect {
-  float x;
-  float y;
-  float w;
-  float h;
+typedef struct {
+  IVec2 a;
+  IVec2 b;
+} IRect;
+
+typedef struct {
+  Vec2 a;
+  Vec2 b;
 } FRect;
 
 // typedef struct Spring {
-//   float target;
-//   float position;
-//   float velocity;
-//   float acceleration;
-//   float friction;
+//   f32 target;
+//   f32 position;
+//   f32 velocity;
+//   f32 acceleration;
+//   f32 friction;
 // } Spring;
 
 typedef struct {
-  FRect rect;
+  //FRect viewport;
+  Vec2 position;
   //FPoint target;
-  //float target_zoom;
-  float zoom;
+  //f32 target_zoom;
+  f32 zoom;
   // Spring zoom_spring;
   // Spring pan_spring_x;
   // Spring pan_spring_y;
 } Camera;
 
-// typedef struct {
-//   FPoint position;
-//   FPoint target;
-//   Spring spring_x;
-//   Spring spring_y;
-// } Selection;
+typedef struct {
+  IRect box;
+  bool active;
+  // Spring spring_x;
+  // Spring spring_y;
+} Selection;
 
-// typedef struct {
-//   int prev_state;
-//   int state;
-//   int button;
-//   FPoint position;
-//   FPoint prev_position;
-//   int clicks;
-// } MouseState;
+typedef struct {
+  IVec2 position;
+  u32 current;
+  u32 previous;
+  i32 wheel;
+} MouseState;
 
 typedef struct {
   SDL_Window* window;
-  SDL_Rect dimensions;
+  IVec2 dimensions;
 } WindowData;
 
 typedef struct {
@@ -111,14 +123,13 @@ typedef struct {
   TextureAtlas texture_atlas;
   Camera camera;
   SDL_Color background_color;
-  //float speed;
-  //float prev_speed;
-  //float animated_time;
+  //f32 prev_speed;
+  //f32 animated_time;
   //u32 frame_count;
-  //float fps;
-  //Selection selection;
+  //f32 fps;
+  Selection selection;
   //const u8 *keyboard_state;
-  //MouseState mouse_state;
+  MouseState mouse_state;
 } RenderContext;
 
 typedef struct {
@@ -127,43 +138,39 @@ typedef struct {
 } PositionComponent;
 
 typedef struct {
-  PositionComponent sparse[MAX_ENTITIES];
-  u32 packed[MAX_ENTITIES];
-} PositionComponents;
-
-typedef struct {
   u32 texture_id;
   Vec2 dimensions;
 } TextureComponent;
 
 typedef struct {
-  float current_velocity;
-  float previous_velocity;
+  f32 current_velocity;
+  f32 previous_velocity;
   Vec2 current_direction;
   Vec2 previous_direction;
 } SpeedComponent;
 
 typedef struct {
-  SpeedComponent sparse[MAX_ENTITIES];
-  u32 packed[MAX_ENTITIES];
-} SpeedComponents;
+  bool selected;
+} SelectableComponent;
 
 typedef struct {
   u32 entity_count;
-  char *names[MAX_ENTITIES];
-  int healths[MAX_ENTITIES];
+  char names[MAX_ENTITIES][MAX_ENTITY_NAME_LENGTH];
+  i32 healths[MAX_ENTITIES];
   PositionComponent positions[MAX_ENTITIES];
   SpeedComponent speeds[MAX_ENTITIES];
   TextureComponent textures[MAX_ENTITIES];
+  SelectableComponent selectables[MAX_ENTITIES];
+
   //bool selected[MAX_ENTITIES];
   //bool hovered[MAX_ENTITIES];
   //int personalities[MAX_ENTITIES][Personality_Count];
 } GameContext;
 
 typedef struct {
-  double delta_time;
-  double alpha; //This is the interpolation factor between the current and previous states. Used for rendering accurate physics steps
-  double simulation_speed;
+  f64 delta_time;
+  f64 alpha; //This is the interpolation factor between the current and previous states. Used for rendering accurate physics steps
+  f64 simulation_speed;
 } PhysicsContext;
 
 static RenderContext render_context;
@@ -172,6 +179,50 @@ static PhysicsContext physics_context;
 
 int random_int_between(int min, int max) {
   return min + (rand() % (max - min));
+}
+
+i32 rect_width(IRect* rect) {
+  return rect->b.x - rect->a.x;
+}
+
+i32 rect_height(IRect* rect) {
+  return rect->b.y - rect->a.y;
+}
+
+f32 frect_width(FRect* rect) {
+  return rect->b.x - rect->a.x;
+}
+
+f32 frect_height(FRect* rect) {
+  return rect->b.y - rect->a.y;
+}
+
+Vec2 vec2_world_to_screen(Vec2 point) {
+    Vec2 translated_point;
+    translated_point.x = (point.x - render_context.camera.position.x) * render_context.camera.zoom + render_context.window_data.dimensions.x * 0.5f;
+    translated_point.y = (point.y - render_context.camera.position.y) * render_context.camera.zoom + render_context.window_data.dimensions.y * 0.5f;
+    return translated_point;
+}
+
+Vec2 vec2_screen_to_world(Vec2 point) {
+    Vec2 translated_point;
+    translated_point.x = (point.x - render_context.window_data.dimensions.x * 0.5f) / render_context.camera.zoom + render_context.camera.position.x;
+    translated_point.y = (point.y - render_context.window_data.dimensions.y * 0.5f) / render_context.camera.zoom + render_context.camera.position.y;
+    return translated_point;
+}
+
+FRect frect_world_to_screen(FRect rect) {
+    FRect translated_frect;
+    translated_frect.a = vec2_world_to_screen(rect.a);
+    translated_frect.b = vec2_world_to_screen(rect.b);
+    return translated_frect;
+}
+
+FRect frect_screen_to_world(FRect rect) {
+    FRect translated_frect;
+    translated_frect.a = vec2_screen_to_world(rect.a);
+    translated_frect.b = vec2_screen_to_world(rect.b);
+    return translated_frect;
 }
 
 // int Entity__get_personality_count(int entity_index) {
@@ -189,76 +240,14 @@ int random_int_between(int min, int max) {
 //   return game_states.current_state.personalities[entity_index][personality] > 0;
 // }
 
-// void Entity__create(char* name) {
-//   u32 image_id = random_int_between(0, render_context.image_atlas.count);
-//   float width = 100.0f;
-//   float scale = width / render_context.image_atlas.images[image_id].w;
-//   float height = (float)(render_context.image_atlas.images[image_id].h * scale);
-
-//   game_states.current_state.health[entities_count] = 100;
-//   game_states.current_state.speed[entities_count] = (float)random_int_between(40, 55);
-//   game_states.current_state.names[entities_count] = name;
-//   game_states.current_state.selected[entities_count] = false;
-//   game_states.current_state.hovered[entities_count] = false;
-
-//   game_states.current_state.rect[entities_count] = (FRect){
-//       .h = height,
-//       .w = width,
-//       .x = (float)random_int_between(-1000, 1000),
-//       .y = (float)random_int_between(-1000, 1000),
-//   };
-
-// // game_states.current_state.rect[entities_count] = (FRect){
-// //   .h = height,
-// //   .w = width,
-// //   .x = 0.0f,
-// //   .y = 0.0f
-// // };
-
-//   game_states.current_state.direction[entities_count] = (FPoint){
-//       .x = ((float)(rand() % 200) - 100) / 100,
-//       .y = ((float)(rand() % 200) - 100) / 100,
-//   };
-
-//   //game_states.current_state.direction[entities_count] = (FPoint) {.x = 0.0f, .y = 0.0f};
-
-//   game_states.current_state.image[entities_count] = image_id;
-
-//   int random_amount_of_personalities = random_int_between(5, 10);
-//   for (int i = 0; i < random_amount_of_personalities; i++) {
-//     int personality = random_int_between(0, Personality_Count);
-//     game_states.current_state.personalities[entities_count][personality] = random_int_between(0, 100);
-//   }
-
-//   entities_count += 1;
-// }
-
-// SDL_FRect screen_to_world(FRect *screen_rect) {
-//   SDL_FRect world_rect = {
-//       .w = screen_rect->w / render_context.camera.zoom,
-//       .h = screen_rect->h / render_context.camera.zoom,
-//       .x = (screen_rect->x - render_context.window_data.dimensions.w / 2) / render_context.camera.zoom + render_context.camera.rect.x,
-//       .y = (screen_rect->y - render_context.window_data.dimensions.h / 2) / render_context.camera.zoom + render_context.camera.rect.y,
-//   };
-
-//   return world_rect;
-// }
-
-void world_to_screen(FRect *world_rect) {
-  world_rect->w *= render_context.camera.zoom;
-  world_rect->h *= render_context.camera.zoom;
-  world_rect->x = (world_rect->x - render_context.camera.rect.x) * render_context.camera.zoom + render_context.window_data.dimensions.w /2;
-  world_rect->y = (world_rect->y - render_context.camera.rect.y) * render_context.camera.zoom + render_context.window_data.dimensions.h /2;
-}
-
-void draw_texture(u32 texture_id, FRect* rendering_rect) {
-  SDL_FRect sdl_rect = {
-    .w = rendering_rect->w,
-    .h = rendering_rect->h,
-    .x = rendering_rect->x,
-    .y = rendering_rect->y
+void draw_texture(u32 texture_id, FRect* texture_rect) {
+  SDL_FRect sdl_frect = {
+    .x = texture_rect->a.x,
+    .y = texture_rect->a.y,
+    .w = frect_width(texture_rect),
+    .h = frect_height(texture_rect)
   };
-  int copy_result = SDL_RenderCopyF(render_context.renderer, render_context.texture_atlas.textures[texture_id], NULL, &sdl_rect);
+  int copy_result = SDL_RenderCopyF(render_context.renderer, render_context.texture_atlas.textures[texture_id], NULL, &sdl_frect);
   if (copy_result != 0) {
     printf("Failed to render copy: %s\n", SDL_GetError());
     return;
@@ -268,7 +257,7 @@ void draw_texture(u32 texture_id, FRect* rendering_rect) {
 // void draw_entity_name(int entity_id) {
 //   TTF_Font *font = NULL;
 //   SDL_Surface *text_surface = NULL;
-//   float y = (game_states.current_state.rect[entity_id].y - render_context.camera.rect.y - (45.0f / render_context.camera.zoom)) * render_context.camera.zoom +
+//   f32 y = (game_states.current_state.rect[entity_id].y - render_context.camera.rect.y - (45.0f / render_context.camera.zoom)) * render_context.camera.zoom +
 //             render_context.window_h / 2;
 
 //   if (game_states.current_state.hovered[entity_id]) {
@@ -290,10 +279,10 @@ void draw_texture(u32 texture_id, FRect* rendering_rect) {
 //     fprintf(stderr, "could not create text texture: %s\n", SDL_GetError());
 //   }
 
-//   float diff = ((game_states.current_state.rect[entity_id].w * render_context.camera.zoom) - text_surface->w) / 2;
-//   float x = (((game_states.current_state.rect[entity_id].x - render_context.camera.rect.x) * render_context.camera.zoom) + diff) + render_context.window_w / 2;
+//   f32 diff = ((game_states.current_state.rect[entity_id].w * render_context.camera.zoom) - text_surface->w) / 2;
+//   f32 x = (((game_states.current_state.rect[entity_id].x - render_context.camera.rect.x) * render_context.camera.zoom) + diff) + render_context.window_w / 2;
 
-//   SDL_FRect text_rect = {.w = (float)text_surface->w, .h = (float)text_surface->h, .x = x, .y = y};
+//   SDL_FRect text_rect = {.w = (f32)text_surface->w, .h = (f32)text_surface->h, .x = x, .y = y};
 
 //   SDL_RenderCopyF(render_context.renderer, text_texture, NULL, &text_rect);
 //   SDL_FreeSurface(text_surface);
@@ -316,8 +305,8 @@ void draw_debug_text(int index, char *str, ...) {
   }
 
   SDL_FRect text_rect = {
-      .w = (float)text_surface->w,
-      .h = (float)text_surface->h,
+      .w = (f32)text_surface->w,
+      .h = (f32)text_surface->h,
       .x = 10.0f,
       .y = (32.0f * index),
   };
@@ -377,14 +366,14 @@ void draw_debug_text(int index, char *str, ...) {
 //   assert(result == 0);
 // }
 
-// float Spring__update(Spring *spring, float target) {
+// f32 Spring__update(Spring *spring, f32 target) {
 //   spring->target = target;
 //   spring->velocity += (target - spring->position) * spring->acceleration;
 //   spring->velocity *= spring->friction;
 //   return spring->position += spring->velocity;
 // }
 
-// void draw_border(FRect around, float gap_width, float border_width) {
+// void draw_border(FRect around, f32 gap_width, f32 border_width) {
 //   FRect borders[4];
 
 //   //         1
@@ -454,38 +443,47 @@ void draw_debug_text(int index, char *str, ...) {
 // }
 
 void draw_grid() {
-  // Draw it blended
+  f32 grid_size = 100.0f;
+  //Maybe we should move this viewport into the actual camera struct and just update it during camera_zoom_update(). Not sure where else we may need it yet.
+  Vec2 viewport_dimensions = {
+    .x = render_context.window_data.dimensions.x / render_context.camera.zoom,
+    .y = render_context.window_data.dimensions.y / render_context.camera.zoom
+  };
+  Vec2 start_position = {
+    .x = (f32)(floor((render_context.camera.position.x - viewport_dimensions.x * 0.5f) / grid_size) * grid_size),
+    .y = (f32)(floor((render_context.camera.position.y - viewport_dimensions.y * 0.5f) / grid_size) * grid_size)
+  };
+  Vec2 start_position_screen = vec2_world_to_screen(start_position);
+
   SDL_SetRenderDrawBlendMode(render_context.renderer, SDL_BLENDMODE_BLEND);
   SDL_SetRenderDrawColor(render_context.renderer, 0, 0, 0, 25);
-  float grid_size = 100.0f;
-  float window_w = (float)render_context.window_data.dimensions.w;
-  float window_h = (float)render_context.window_data.dimensions.h;
-  FRect grid_to_screen = {
-    .w = grid_size,
-    .h = grid_size
-  };
 
-  world_to_screen(&grid_to_screen);
-
-  float x_start = grid_to_screen.x - floorf(grid_to_screen.x / grid_to_screen.w) * grid_to_screen.w;
-  for (float x = x_start; x < window_w; x += grid_to_screen.w) {
-    SDL_RenderDrawLineF(render_context.renderer, x, 0, x, window_h);
+  for(f32 y = start_position.y; y < start_position.y + viewport_dimensions.y; y += grid_size) {
+    Vec2 end_point_world = {
+      .x = start_position.x + viewport_dimensions.x, 
+      .y = y
+    };
+    Vec2 end_point_screen = vec2_world_to_screen(end_point_world);
+    SDL_RenderDrawLineF(render_context.renderer, start_position_screen.x, end_point_screen.y, start_position_screen.x + render_context.window_data.dimensions.x, end_point_screen.y);
   }
 
-  float y_start = grid_to_screen.y - floorf(grid_to_screen.y / grid_to_screen.h) * grid_to_screen.h;
-  for (float y = y_start; y < window_h; y += grid_to_screen.h) {
-    SDL_RenderDrawLineF(render_context.renderer, 0, y, window_w, y);
+  for(f32 x = start_position.x; x < start_position.x + viewport_dimensions.x; x += grid_size) {
+    Vec2 end_point_world = {
+      .x = x, 
+      .y = start_position.y + viewport_dimensions.y
+    };
+    Vec2 end_point_screen = vec2_world_to_screen(end_point_world);
+    SDL_RenderDrawLineF(render_context.renderer, end_point_screen.x, start_position_screen.y, end_point_screen.x, start_position_screen.y + render_context.window_data.dimensions.y);
   }
 
-  // Reset the blend mode
   SDL_SetRenderDrawBlendMode(render_context.renderer, SDL_BLENDMODE_NONE);
 }
 
 // void mouse_control_camera(MouseState *mouse_state) {
 //   if (mouse_state->button == SDL_BUTTON_RIGHT && mouse_state->state == SDL_PRESSED) {
 //     if (mouse_state->prev_position.x != mouse_state->position.x || mouse_state->prev_position.y != mouse_state->position.y) {
-//       float delta_x = mouse_state->position.x - mouse_state->prev_position.x;
-//       float delta_y = mouse_state->position.y - mouse_state->prev_position.y;
+//       f32 delta_x = mouse_state->position.x - mouse_state->prev_position.x;
+//       f32 delta_y = mouse_state->position.y - mouse_state->prev_position.y;
 //       mouse_state->prev_position.x = mouse_state->position.x;
 //       mouse_state->prev_position.y = mouse_state->position.y;
 
@@ -497,7 +495,7 @@ void draw_grid() {
 
 // // Camera movement and selection rect movement
 // void keyboard_control_camera() {
-//   float camera_keyboard_movement_speed = 5.0f;
+//   f32 camera_keyboard_movement_speed = 5.0f;
 //   if (render_context.keyboard_state[SDL_GetScancodeFromKey(SDLK_w)]) {
 //     render_context.camera.target.y -= camera_keyboard_movement_speed / render_context.camera.zoom;
 //     render_context.selection.target.y += camera_keyboard_movement_speed;
@@ -609,16 +607,16 @@ void init() {
 //   }
 // }
 
-// void aupdate(double a, double b) {
+// void aupdate(f64 a, f64 b) {
 //     // frame_count++;
 //     // if (SDL_GetTicks64() - start_ticks >= 1000) {
-//     //   render_context.fps = (float)frame_count;
+//     //   render_context.fps = (f32)frame_count;
 //     //   frame_count = 0;
 //     //   start_ticks = SDL_GetTicks64();
 //     // }
 
 //     // current_time = SDL_GetTicks64();
-//     //render_context.delta_time = (float)(current_time - last_update_time) / 1000;
+//     //render_context.delta_time = (f32)(current_time - last_update_time) / 1000;
 //     //last_update_time = current_time;
 //     //render_context.animated_time = fmodf(render_context.animated_time + render_context.delta_time * 0.5f, 1);
 //     render_context.camera.zoom = Spring__update(&render_context.camera.zoom_spring, render_context.camera.target_zoom);
@@ -627,64 +625,8 @@ void init() {
 
 //     SDL_Event event;
 //     while (SDL_PollEvent(&event)) {
-//       if (event.type == SDL_MOUSEBUTTONDOWN || event.type == SDL_MOUSEBUTTONUP) {
-//         render_context.mouse_state.prev_state = render_context.mouse_state.state;
-//         render_context.mouse_state.state = event.button.state;
-//         render_context.mouse_state.button = event.button.button;
-//         render_context.mouse_state.clicks = event.button.clicks;
-//         if (render_context.mouse_state.prev_state != SDL_PRESSED) {
-//           // Set selection target to the current mouse position
-//           render_context.selection.target.x = render_context.mouse_state.position.x;
-//           render_context.selection.target.y = render_context.mouse_state.position.y;
-//           // Reset selection spring so it doesn't spring between the old selection and the new one
-//           render_context.selection.spring_x.position = render_context.selection.target.x;
-//           render_context.selection.spring_y.position = render_context.selection.target.y;
-//         }
-//       }
-//       if (event.type == SDL_MOUSEMOTION) {
-//         render_context.mouse_state.prev_state = render_context.mouse_state.state;
-//         render_context.mouse_state.prev_position.x = render_context.mouse_state.position.x;
-//         render_context.mouse_state.prev_position.y = render_context.mouse_state.position.y;
-//         render_context.mouse_state.position.x = (float)event.motion.x;
-//         render_context.mouse_state.position.y = (float)event.motion.y;
-//       }
-//       if (event.type == SDL_MOUSEWHEEL) {
-//         if (event.wheel.y > 0) {
-//           // zoom in
-//           render_context.camera.target_zoom = min(render_context.camera.target_zoom + 0.1f, 2.0f);
-//         } else if (event.wheel.y < 0) {
-//           // zoom out
-//           render_context.camera.target_zoom = max(render_context.camera.target_zoom - 0.1f, 0.1f);
-//         }
-//       }
 //       if (event.type == SDL_KEYDOWN) {
 //         switch (event.key.keysym.sym) {
-//           case SDLK_ESCAPE:
-//             bool was_something_selected = false;
-
-//             reverse_entity_loop(entity_i) {
-//               if (game_states.current_state.selected[entity_i]) {
-//                 was_something_selected = true;
-//                 game_states.current_state.selected[entity_i] = false;
-//               }
-//             }
-//             if (!was_something_selected) {
-//               //game_is_still_running = 0;
-//             }
-//             // Maybe the following process:
-//             // 1. If anything is selected, then deselect it and break.
-//             // 2. If nothing was deselected, then open the pause menu.
-//             // 3. If in the pause menu, then close the pause menu.
-//             break;
-
-//           case SDLK_UP:
-//             render_context.speed += 100.0f;
-//             break;
-
-//           case SDLK_DOWN:
-//             render_context.speed = max(render_context.speed - 100.0f, 0);
-//             break;
-
 //           case SDLK_SPACE:
 //             if (render_context.prev_speed > 0) {
 //               render_context.speed = render_context.prev_speed;
@@ -696,10 +638,7 @@ void init() {
 //           default:
 //             break;
 //         }
-//       } else if (event.type == SDL_QUIT) {
-//         //game_is_still_running = 0;
 //       }
-
 //       // Two loops needed so we can have a case where multiple entities can be hovered over, but only one can be selected
 //       reverse_entity_loop(entity_i) {
 //         game_states.current_state.hovered[entity_i] = entity_under_mouse(entity_i, &render_context.mouse_state);
@@ -707,7 +646,10 @@ void init() {
 
 //       reverse_entity_loop(entity_i) {
 //         if (entity_under_mouse(entity_i, &render_context.mouse_state)) {
-//           if (render_context.mouse_state.button == SDL_BUTTON_LEFT && render_context.mouse_state.state == SDL_PRESSED && render_context.mouse_state.prev_state == SDL_RELEASED) {
+//           if (
+            //  render_context.mouse_state.button == SDL_BUTTON_LEFT && 
+            //  render_context.mouse_state.state == SDL_PRESSED && 
+            //  render_context.mouse_state.prev_state == SDL_RELEASED) {
 //             game_states.current_state.selected[entity_i] = !game_states.current_state.selected[entity_i];
 //             log_entity_personalities(entity_i);
 //             break;
@@ -763,23 +705,78 @@ void system_move_entities(PositionComponent* position, SpeedComponent* speed) {
   position->previous_position = position->current_position;
   speed->previous_direction = speed->current_direction;
   speed->previous_velocity = speed->current_velocity;
-  position->current_position.x += speed->current_direction.x * speed->current_velocity * (float)(physics_context.delta_time * physics_context.simulation_speed);
-  position->current_position.y += speed->current_direction.y * speed->current_velocity * (float)(physics_context.delta_time * physics_context.simulation_speed);
+  position->current_position.x += speed->current_direction.x * speed->current_velocity * (f32)(physics_context.delta_time * physics_context.simulation_speed);
+  position->current_position.y += speed->current_direction.y * speed->current_velocity * (f32)(physics_context.delta_time * physics_context.simulation_speed);
 }
 
 void system_draw_entities(PositionComponent* position, TextureComponent* texture) {
-  FRect rendering_rect = {
-    .w = texture->dimensions.x,
-    .h = texture->dimensions.y,
-    .x = position->current_position.x * (float)physics_context.alpha + position->previous_position.x * (float)(1.0 - physics_context.alpha),
-    .y = position->current_position.y * (float)physics_context.alpha + position->previous_position.y * (float)(1.0 - physics_context.alpha)
+  FRect texture_rect = {
+    .a = {
+      .x = position->current_position.x * (f32)physics_context.alpha + position->previous_position.x * (f32)(1.0 - physics_context.alpha),
+      .y = position->current_position.y * (f32)physics_context.alpha + position->previous_position.y * (f32)(1.0 - physics_context.alpha)
+    }
   };
-  world_to_screen(&rendering_rect);
-  draw_texture(texture->texture_id, &rendering_rect);
+  texture_rect.b.x = texture_rect.a.x + texture->dimensions.x;
+  texture_rect.b.y = texture_rect.a.y + texture->dimensions.y;
+  FRect translated_rect = frect_world_to_screen(texture_rect);
+  draw_texture(texture->texture_id, &translated_rect);
+}
+
+void system_draw_selected_boxes(PositionComponent* position, TextureComponent* texture, SelectableComponent* selectable) {
+  if(selectable->selected) {
+    FRect borders[4];
+
+    //         0
+    //   |-----------|
+    //   |           |
+    // 3 |           | 1
+    //   |           |
+    //   |-----------|
+    //         2
+
+    u32 border_width = 3;
+
+    //Surely we can solve this with some maths
+    borders[0].a.x = position->current_position.x;
+    borders[0].a.y = position->current_position.y;
+    borders[0].b.x = texture->dimensions.x;
+    borders[0].b.y = (f32)border_width;
+    borders[0] = frect_world_to_screen(borders[0]);
+
+    borders[1].a.x = position->current_position.x + texture->dimensions.x - (f32)border_width;
+    borders[1].a.y = position->current_position.y;
+    borders[1].b.x = (f32)border_width;
+    borders[1].b.y = texture->dimensions.y;
+    borders[0] = frect_world_to_screen(borders[1]);
+
+    borders[2].a.x = position->current_position.x;
+    borders[2].a.y = position->current_position.y + texture->dimensions.y;
+    borders[2].b.x = texture->dimensions.x;
+    borders[2].b.y = (f32)border_width;
+    borders[0] = frect_world_to_screen(borders[2]);
+
+    borders[3].a.x = position->current_position.x;
+    borders[3].a.y = position->current_position.y;
+    borders[3].b.x = (f32)border_width;
+    borders[3].b.y = texture->dimensions.y;
+    borders[0] = frect_world_to_screen(borders[3]);
+
+    for(u32 border_index = 0; border_index < array_count(borders); ++border_index) {
+      SDL_FRect sdl_border = {
+        .x = borders[border_index].a.x,
+        .y = borders[border_index].a.y,
+        .w = frect_width(&borders[border_index]),
+        .h = frect_height(&borders[border_index])
+      }; 
+      
+      SDL_SetRenderDrawColor(render_context.renderer, 255, 0, 0, 255);
+      SDL_RenderFillRectF(render_context.renderer, &sdl_border);
+    }
+  }
 }
 
 void update() {
-  SDL_GetWindowSizeInPixels(render_context.window_data.window, &render_context.window_data.dimensions.w, &render_context.window_data.dimensions.h);
+  SDL_GetWindowSizeInPixels(render_context.window_data.window, &render_context.window_data.dimensions.x, &render_context.window_data.dimensions.y);
 
   for(u32 entity_id = 0; entity_id < game_context.entity_count; entity_id++) {
     system_move_entities(&game_context.positions[entity_id], &game_context.speeds[entity_id]);
@@ -797,6 +794,69 @@ void render_clear() {
   SDL_RenderClear(render_context.renderer);
 }
 
+void normalize_selection_rect(FRect* selection_rect) {
+    //The values of selection.end will correspond with the following traits below if they lie within that quadrant.
+    //For example, if selection.end.x > selection.start.x && selection.end.y > selection.start.y then the end point lies within quadrant 4
+    //We must transmute the rectangle so that, regardless of which quadrant the selection.end resides in, 
+    //we have a positive growth in both the x and y axes. Which will give us a valid rectangle, logically, to use with SDL functions.
+    //As an aside, I've also chosen to check the quadrants in counter-clockwise fashion as it feels more pragmatic to make selections
+    //in the 3rd and 4th quadrants. We may as well check the most common usages first to short circuit asap.
+
+
+    FRect normalized_rect;
+
+    //Quadrant 4: +X, +Y
+    if((selection_rect->b.x > selection_rect->a.x) && (selection_rect->b.y > selection_rect->a.y)) {
+      printf("Quadrant 4\n");
+      normalized_rect.a.x = selection_rect->a.x;
+      normalized_rect.a.y = selection_rect->a.y;
+      normalized_rect.b.x = selection_rect->b.x;
+      normalized_rect.b.y = selection_rect->b.y;
+    }
+    //Quadrant 3: -X, +Y
+    else if((selection_rect->b.x < selection_rect->a.x) && (selection_rect->b.y > selection_rect->a.y)) {
+      printf("Quadrant 3\n");
+      normalized_rect.a.x = selection_rect->b.x;
+      normalized_rect.a.y = selection_rect->a.y;
+      normalized_rect.b.x = selection_rect->a.x;
+      normalized_rect.b.y = selection_rect->b.y;
+    }
+    //Quadrant 2: -X, -Y
+    else if((selection_rect->b.x < selection_rect->a.x) && (selection_rect->b.y < selection_rect->a.y)) {
+      printf("Quadrant 2\n");
+      normalized_rect.a.x = selection_rect->b.x;
+      normalized_rect.a.y = selection_rect->b.y;
+      normalized_rect.b.x = selection_rect->a.x;
+      normalized_rect.b.y = selection_rect->a.y;
+    }
+    //Quadrant 1: +X, -Y
+    else if((selection_rect->b.x > selection_rect->a.x) && (selection_rect->b.y < selection_rect->a.y)) {
+      printf("Quadrant 1\n");
+      normalized_rect.a.x = selection_rect->a.x;
+      normalized_rect.a.y = selection_rect->b.y;
+      normalized_rect.b.x = selection_rect->b.x;
+      normalized_rect.b.y = selection_rect->a.y;
+    }
+}
+
+void debug_draw_info() {
+  SDL_SetRenderDrawBlendMode(render_context.renderer, SDL_BLENDMODE_BLEND);
+  SDL_SetRenderDrawColor(render_context.renderer, 30, 30, 30, 220);
+  SDL_RenderFillRectF(render_context.renderer, &(SDL_FRect){
+    .w = 300.0f,
+    .h = 100.0f
+  });
+  SDL_SetRenderDrawBlendMode(render_context.renderer, SDL_BLENDMODE_NONE);
+
+  draw_debug_text(0, "Simulation: [Speed: %.2f]", physics_context.simulation_speed);
+  draw_debug_text(1, "Camera: [Zoom: %.2f]", render_context.camera.zoom);
+  if(render_context.selection.active) {
+    draw_debug_text(2, "[Selecting] (%d, %d) -> (%d, %d)", render_context.selection.box.a.x, render_context.selection.box.a.y, render_context.selection.box.b.x + render_context.selection.box.a.x, render_context.selection.box.b.y + render_context.selection.box.a.y);
+  } else {
+    draw_debug_text(2, "[Not Selecting]");
+  }
+}
+
 void render() {
   //render_state = current_state * alpha + previous_state * ( 1.0 - alpha );
 
@@ -805,10 +865,22 @@ void render() {
 
   for(u32 entity_id = 0; entity_id < game_context.entity_count; ++entity_id) {
     system_draw_entities(&game_context.positions[entity_id], &game_context.textures[entity_id]);
+    system_draw_selected_boxes(&game_context.positions[entity_id], &game_context.textures[entity_id], &game_context.selectables[entity_id]);
   }
 
-  draw_debug_text(0, "Simulation: [Speed: %.2f]", physics_context.simulation_speed);
-  draw_debug_text(1, "Camera: [Zoom: %.2f]", render_context.camera.zoom);
+  if(render_context.selection.active) {
+    SDL_Rect selection = {
+      .x = render_context.selection.box.a.x,
+      .y = render_context.selection.box.a.y,
+      .w = render_context.selection.box.b.x - render_context.selection.box.a.x,
+      .h = render_context.selection.box.b.y - render_context.selection.box.a.y
+    };
+
+    SDL_SetRenderDrawColor(render_context.renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(render_context.renderer, &selection);
+  }
+
+  debug_draw_info();
 
   SDL_RenderPresent(render_context.renderer);
 }
@@ -816,7 +888,7 @@ void render() {
 void load_fonts() {
   //Eventually you could consider dynamically loading files from the assets folder. Implementing this is, however,
   //unfortunately platform dependent so it would also require some type of platform abstraction to be viable.
-  char font_paths[1][128] = {
+  char font_paths[][128] = {
     "assets/OpenSans-Regular.ttf"
   };
 
@@ -828,20 +900,21 @@ void load_fonts() {
   }
 }
 
-void load_images() {
+void load_textures() {
   //Eventually you could consider dynamically loading files from the assets folder. Implementing this is, however,
   //unfortunately platform dependent so it would also require some type of platform abstraction to be viable.
-  char texture_paths[4][128] = {
+  char texture_paths[][128] = {
     "assets/stone.bmp",
     "assets/fish.bmp",
     "assets/lamb.bmp",
     "assets/lamb2.bmp",
+    "assets/theclaw.png"
   };
 
   for(u32 i = 0; i < array_count(texture_paths); i++) {
     SDL_Surface* surface = IMG_Load(texture_paths[i]);
-    render_context.texture_atlas.dimensions[i].x = (float)surface->w;
-    render_context.texture_atlas.dimensions[i].y = (float)surface->h;
+    render_context.texture_atlas.dimensions[i].x = (f32)surface->w;
+    render_context.texture_atlas.dimensions[i].y = (f32)surface->h;
     render_context.texture_atlas.textures[i] = SDL_CreateTextureFromSurface(render_context.renderer, surface);
     assert(render_context.texture_atlas.textures[i]);
     ++render_context.texture_atlas.count;
@@ -850,7 +923,7 @@ void load_images() {
 }
 
 void create_entities() {
-  char entity_names[43][32] = {
+  char entity_names[][MAX_ENTITY_NAME_LENGTH] = {
     "pushqrdx", "Athano", "AshenHobs", "adrian_learns", "RVerite", "Orshy", "ruggs888", "Xent12", "nuke_bird", "Kasper_573", "SturdyPose",
     "coffee_lava", "goudacheeseburgers", "ikiwixz", "NixAurvandil", "smilingbig", "tk_dev", "realSuperku", "Hoby2000", "CuteMath", "forodor",
     "Azenris", "collector_of_stuff", "EvanMMO", "thechaosbean", "Lutf1sk", "BauBas9883", "physbuzz", "rizoma0x00", "Tkap1", "GavinsAwfulStream",
@@ -859,32 +932,107 @@ void create_entities() {
   };
 
   for(u32 name_index = 0; name_index < array_count(entity_names); name_index++) {
-    game_context.names[game_context.entity_count] = entity_names[name_index];
+    strcpy_s(game_context.names[game_context.entity_count], sizeof(entity_names[name_index]), entity_names[name_index]);
     game_context.healths[game_context.entity_count] = 100;
     game_context.positions[game_context.entity_count] = (PositionComponent){
       .current_position = {
-        .x = (float)random_int_between(-1000, 1000),
-        .y = (float)random_int_between(-1000, 1000)
+        .x = (f32)random_int_between(-1000, 1000),
+        .y = (f32)random_int_between(-1000, 1000)
       }
     };
     game_context.speeds[game_context.entity_count] = (SpeedComponent){
       .current_direction = {
-        .x = ((float)(rand() % 200) - 100) / 100,
-        .y = ((float)(rand() % 200) - 100) / 100
+        .x = ((f32)(rand() % 200) - 100) / 100,
+        .y = ((f32)(rand() % 200) - 100) / 100
       },
-      .current_velocity = (float)random_int_between(40, 55)
+      .current_velocity = (f32)random_int_between(40, 55)
     };
     u32 texture_id = random_int_between(0, render_context.texture_atlas.count);
-    float texture_width = 100.0f;
+    f32 texture_width = 100.0f;
     game_context.textures[game_context.entity_count] = (TextureComponent){
       .texture_id = texture_id,
       .dimensions = {
         .x = texture_width
       }
     };
-    float scale = texture_width / render_context.texture_atlas.dimensions[texture_id].x;
-    game_context.textures[game_context.entity_count].dimensions.y = (float)(render_context.texture_atlas.dimensions[texture_id].y * scale);
+    f32 scale = texture_width / render_context.texture_atlas.dimensions[texture_id].x;
+    game_context.textures[game_context.entity_count].dimensions.y = (f32)(render_context.texture_atlas.dimensions[texture_id].y * scale);
+    game_context.selectables[game_context.entity_count].selected = false;
     ++game_context.entity_count;
+  }
+}
+
+void camera_update_zoom() {
+  //printf("Mouse wheel: %d\n", render_context.mouse_state.wheel);
+    f32 zoom_scaling_factor = 0.1f;
+    f32 zoom = render_context.camera.zoom;
+    zoom += zoom_scaling_factor * render_context.mouse_state.wheel;
+    if(render_context.mouse_state.wheel > 0) {
+      zoom += 0.1f * render_context.mouse_state.wheel;
+      zoom = min(zoom, 2.0f);
+    } else if(render_context.mouse_state.wheel < 0) {
+      zoom += 0.1f * render_context.mouse_state.wheel;
+      zoom = max(zoom, 0.1f);
+    }
+    render_context.camera.zoom = zoom;
+    render_context.mouse_state.wheel = 0;
+}
+
+void entities_clear_selected() {
+  for(u32 entity_id = 0; entity_id < game_context.entity_count; ++entity_id) {
+      game_context.selectables[entity_id].selected = false;
+  }
+}
+
+void entities_select_from_rect(FRect* selection_rect) {
+  entities_clear_selected();
+  FRect translated_rect = frect_screen_to_world(*selection_rect);
+
+  SDL_FRect sdl_selection_rect = {
+    .x = translated_rect.a.x,
+    .y = translated_rect.a.y,
+    .w = frect_width(&translated_rect),
+    .h = frect_height(&translated_rect)
+  };
+
+  u32 selected_entity_count = 0;
+  for(u32 entity_id = 0; entity_id < game_context.entity_count; ++entity_id) {
+    SDL_FRect sdl_entity_rect = {
+      .x = game_context.positions[entity_id].current_position.x,
+      .y = game_context.positions[entity_id].current_position.y,
+      .w = game_context.textures[entity_id].dimensions.x,
+      .h = game_context.textures[entity_id].dimensions.y
+    };
+
+    if(SDL_HasIntersectionF(&sdl_selection_rect, &sdl_entity_rect) == SDL_TRUE) {
+      ++selected_entity_count;
+      game_context.selectables[entity_id].selected = true;
+    }
+  }
+
+  //printf("Selected entity count: %d\n", selected_entity_count);
+}
+
+void selection_update() {
+  if(render_context.mouse_state.current & SDL_BUTTON_LMASK) {
+    if(!(render_context.mouse_state.previous & SDL_BUTTON_LMASK)) {
+      //printf("Selection start\n");
+      entities_clear_selected();
+      render_context.selection.active = true;
+      render_context.selection.box.a =  render_context.selection.box.b = render_context.mouse_state.position;
+    } else {
+      //printf("Dragging selection\n");
+      render_context.selection.box.b.x = render_context.mouse_state.position.x;
+      render_context.selection.box.b.y = render_context.mouse_state.position.y;
+    }
+  }
+  if((render_context.mouse_state.previous & SDL_BUTTON_LMASK) && !(render_context.mouse_state.current & SDL_BUTTON_LMASK)) {
+    //printf("Selection complete\n");
+    render_context.selection.active = false;
+  }
+
+  if(render_context.mouse_state.current & SDL_BUTTON_RMASK) {
+    entities_clear_selected();
   }
 }
 
@@ -916,14 +1064,14 @@ int main(int argc, char *args[]) {
     },
     .renderer = renderer,
     .camera = {
-      .zoom = 0.4f
+      .zoom = 1.0f
     },
     .background_color = {35, 127, 178, 255}
   };
 
-  SDL_GetWindowSizeInPixels(render_context.window_data.window, &render_context.window_data.dimensions.w, &render_context.window_data.dimensions.h);
+  SDL_GetWindowSizeInPixels(render_context.window_data.window, &render_context.window_data.dimensions.x, &render_context.window_data.dimensions.y);
   load_fonts();
-  load_images();
+  load_textures();
 
   game_context = (GameContext) {
     .entity_count = 0
@@ -937,30 +1085,31 @@ int main(int argc, char *args[]) {
   };
 
   int game_is_still_running = 1;
-  double accumulator = 0.0;
-  double currentTime = SDL_GetTicks64() / 1000.0;
+  f64 accumulator = 0.0;
+  f64 current_time = SDL_GetTicks64() / 1000.0;
 
   while (game_is_still_running) {
-      double newTime = SDL_GetTicks64() / 1000.0;
-      double frameTime = newTime - currentTime;
+      f64 new_time = SDL_GetTicks64() / 1000.0;
+      f64 frame_time = new_time - current_time;
 
       //Here we keep the frame_time within a reasonable bound. If a frame_time exceeds 250ms, we "give up" and drop simulation frames
       //This is necessary as if our frame_time were to become too large, we would effectively lock ourselves in an update cycle 
       //and the simulation would fall completely out of sync with the physics being rendered
-      double max_frame_time_threshold = 0.25;
-      if (frameTime > max_frame_time_threshold) {
-          frameTime = max_frame_time_threshold;
+      f32  max_frame_time_threshold = 0.25;
+      if (frame_time > max_frame_time_threshold) {
+          frame_time = max_frame_time_threshold;
       }
     
-      currentTime = newTime;
-      accumulator += frameTime;
+      current_time = new_time;
+      accumulator += frame_time;
       while (accumulator >= physics_context.delta_time) {
           update();
           accumulator -= physics_context.delta_time;
       }
 
       physics_context.alpha = fmin(accumulator / physics_context.delta_time, 1.0);
-      render();
+
+    render();
 
     SDL_Event event;
     while(SDL_PollEvent(&event)) {
@@ -981,16 +1130,16 @@ int main(int argc, char *args[]) {
             default: {}
           }
         } break;
+        case SDL_MOUSEMOTION:
+        case SDL_MOUSEBUTTONDOWN:
+        case SDL_MOUSEBUTTONUP: {
+          render_context.mouse_state.previous = render_context.mouse_state.current;
+          render_context.mouse_state.current = SDL_GetMouseState(&render_context.mouse_state.position.x, &render_context.mouse_state.position.y);
+          selection_update();
+        } break;
         case SDL_MOUSEWHEEL: {
-          float zoom = render_context.camera.zoom;
-          if(event.wheel.y > 0) {
-            zoom += 0.1f;
-            zoom = min(zoom, 2.0f);
-          } else if(event.wheel.y < 0) {
-            zoom -= 0.1f;
-            zoom = max(zoom, 0.1f);
-          }
-          render_context.camera.zoom = zoom;
+          render_context.mouse_state.wheel = event.wheel.y;
+          camera_update_zoom();
         } break;
         case SDL_WINDOWEVENT: {
           switch(event.window.event) {
@@ -1004,10 +1153,6 @@ int main(int argc, char *args[]) {
       }
     }
   }
-
-  SDL_DestroyRenderer(render_context.renderer);
-  SDL_DestroyWindow(render_context.window_data.window);
-  SDL_Quit();
 
   return 0;
 }

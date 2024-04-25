@@ -27,7 +27,7 @@ setlocal ENABLEDELAYEDEXPANSION
     set "compilerFlags=-W4 -WX -Od -nologo -Zc:strictStrings -GR- -favor:INTEL64 -cgthreads8 -MP /EHsc"
     set "ignoreWarnings=-wd4100 -wd4996"
     set "includeDirs=..\include"
-    set "linkerFlags=-INCREMENTAL:NO -STACK:20000000"
+    set "linkerFlags=-INCREMENTAL:NO -STACK:50000000"
 
     if %debugMode%==1 (
         set "compilerFlags=%compilerFlags% -FC -Z7"
