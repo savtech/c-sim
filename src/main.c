@@ -615,59 +615,47 @@ void system_draw_entities(PositionComponent* position, TextureComponent* texture
 
 void system_draw_selected_boxes(PositionComponent* position, TextureComponent* texture, SelectableComponent* selectable) {
   if(selectable->selected) {
-    FRect borders[4];
-
-    //         0
-    //   |-----------|
-    //   |           |
-    // 3 |           | 1
-    //   |           |
-    //   |-----------|
-    //         2
-
-    f32 border_width = 3.0f;
-
-    //Surely we can solve this with some maths
-    borders[0].a.x = position->current_position.x;
-    borders[0].a.y = position->current_position.y;
-    borders[0].b.x = position->current_position.x + texture->dimensions.x;
-    borders[0].b.y = position->current_position.y + (f32)border_width;
-    borders[0] = frect_world_to_screen(borders[0]);
-
-    borders[1].a.x = position->current_position.x + texture->dimensions.x - border_width;
-    borders[1].a.y = position->current_position.y;
-    borders[1].b.x = position->current_position.x + texture->dimensions.x;
-    borders[1].b.y = position->current_position.y + texture->dimensions.y;
-    borders[1] = frect_world_to_screen(borders[1]);
-
-    borders[2].a.x = position->current_position.x;
-    borders[2].a.y = position->current_position.y + texture->dimensions.y;
-    borders[2].b.x = position->current_position.x + texture->dimensions.x;
-    borders[2].b.y = position->current_position.y + texture->dimensions.y + border_width;
-    borders[2] = frect_world_to_screen(borders[2]);
-
-    borders[3].a.x = position->current_position.x;
-    borders[3].a.y = position->current_position.y;
-    borders[3].b.x = position->current_position.x + border_width;
-    borders[3].b.y = position->current_position.y + texture->dimensions.y;
-    borders[3] = frect_world_to_screen(borders[3]);
-
-    for(u32 border_index = 0; border_index < array_count(borders); ++border_index) {
-      SDL_FRect sdl_border = {
-        .x = borders[border_index].a.x,
-        .y = borders[border_index].a.y
-      };
-      if(border_index % 2 == 0) {
-        sdl_border.w = frect_width(&borders[border_index]);
-        sdl_border.h = border_width;
-      } else {
-        sdl_border.w = border_width;
-        sdl_border.h = frect_height(&borders[border_index]);
+    f32 border_width = 3.0f * render_context.camera.zoom;
+    Vec2 entity_position = {
+      .x = position->current_position.x * (f32)physics_context.alpha + position->previous_position.x * (f32)(1.0 - physics_context.alpha),
+      .y = position->current_position.y * (f32)physics_context.alpha + position->previous_position.y * (f32)(1.0 - physics_context.alpha)
+    };
+    FRect entity_rect = {
+      .a = {
+        .x = entity_position.x,
+        .y = entity_position.y
+      },
+      .b = {
+        .x = entity_position.x + texture->dimensions.x,
+        .y = entity_position.y + texture->dimensions.y
       }
+    };
 
-      SDL_SetRenderDrawColor(render_context.renderer, 255, 0, 0, 255);
-      SDL_RenderFillRectF(render_context.renderer, &sdl_border);
-    }
+    FRect translated_entity_rect = frect_world_to_screen(entity_rect);
+    SDL_FRect sdl_select_borders[4];
+
+    sdl_select_borders[0].x = translated_entity_rect.a.x;
+    sdl_select_borders[0].y = translated_entity_rect.a.y;
+    sdl_select_borders[0].w = frect_width(&translated_entity_rect);
+    sdl_select_borders[0].h = border_width;
+
+    sdl_select_borders[1].x = translated_entity_rect.b.x - border_width;
+    sdl_select_borders[1].y = translated_entity_rect.a.y;
+    sdl_select_borders[1].w = border_width;
+    sdl_select_borders[1].h = frect_height(&translated_entity_rect);
+
+    sdl_select_borders[2].x = translated_entity_rect.a.x;
+    sdl_select_borders[2].y = translated_entity_rect.b.y - border_width;
+    sdl_select_borders[2].w = frect_width(&translated_entity_rect);
+    sdl_select_borders[2].h = border_width;
+
+    sdl_select_borders[3].x = translated_entity_rect.a.x;
+    sdl_select_borders[3].y = translated_entity_rect.a.y;
+    sdl_select_borders[3].w = border_width;
+    sdl_select_borders[3].h = frect_height(&translated_entity_rect);
+
+    SDL_SetRenderDrawColor(render_context.renderer, 255, 0, 0, 255);
+    SDL_RenderFillRectsF(render_context.renderer, sdl_select_borders, 4);
   }
 }
 
@@ -703,7 +691,7 @@ FRect normalize_selection_rect(FRect* selection_rect) {
 
     //Quadrant 4: +X, +Y
     if((selection_rect->b.x > selection_rect->a.x) && (selection_rect->b.y > selection_rect->a.y)) {
-      printf("Quadrant 4\n");
+      //printf("Quadrant 4\n");
       normalized_rect.a.x = selection_rect->a.x;
       normalized_rect.a.y = selection_rect->a.y;
       normalized_rect.b.x = selection_rect->b.x;
@@ -711,7 +699,7 @@ FRect normalize_selection_rect(FRect* selection_rect) {
     }
     //Quadrant 3: -X, +Y
     else if((selection_rect->b.x < selection_rect->a.x) && (selection_rect->b.y > selection_rect->a.y)) {
-      printf("Quadrant 3\n");
+      //printf("Quadrant 3\n");
       normalized_rect.a.x = selection_rect->b.x;
       normalized_rect.a.y = selection_rect->a.y;
       normalized_rect.b.x = selection_rect->a.x;
@@ -719,7 +707,7 @@ FRect normalize_selection_rect(FRect* selection_rect) {
     }
     //Quadrant 2: -X, -Y
     else if((selection_rect->b.x < selection_rect->a.x) && (selection_rect->b.y < selection_rect->a.y)) {
-      printf("Quadrant 2\n");
+      //printf("Quadrant 2\n");
       normalized_rect.a.x = selection_rect->b.x;
       normalized_rect.a.y = selection_rect->b.y;
       normalized_rect.b.x = selection_rect->a.x;
@@ -727,7 +715,7 @@ FRect normalize_selection_rect(FRect* selection_rect) {
     }
     //Quadrant 1: +X, -Y
     else if((selection_rect->b.x > selection_rect->a.x) && (selection_rect->b.y < selection_rect->a.y)) {
-      printf("Quadrant 1\n");
+      //printf("Quadrant 1\n");
       normalized_rect.a.x = selection_rect->a.x;
       normalized_rect.a.y = selection_rect->b.y;
       normalized_rect.b.x = selection_rect->b.x;
