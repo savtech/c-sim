@@ -321,51 +321,6 @@ void draw_debug_text(int index, char *str, ...) {
   SDL_DestroyTexture(text_texture);
 }
 
-// FRect get_selection_rect(MouseState *mouse_state) {
-//   return (FRect){
-//       .x = min(mouse_state->position.x, render_context.selection.position.x),
-//       .y = min(mouse_state->position.y, render_context.selection.position.y),
-//       .w = SDL_fabsf(mouse_state->position.x - render_context.selection.position.x),
-//       .h = SDL_fabsf(mouse_state->position.y - render_context.selection.position.y),
-//   };
-// }
-
-// void render_debug_info(MouseState *mouse_state) {
-//   int index = 0;
-//   draw_debug_text(index++, "fps: %.2f", render_context.fps);
-//   draw_debug_text(index++, "mouse state: %d, button: %d, clicks: %d", mouse_state->state, mouse_state->button, mouse_state->clicks);
-//   draw_debug_text(index++, "prev mouse state: %d", mouse_state->prev_state);
-//   draw_debug_text(index++, "camera zoom: %.1f", render_context.camera.target_zoom);
-//   draw_debug_text(index++, "game speed: %.1f", render_context.speed);
-//   draw_debug_text(
-//       index++, "camera: current x,y: %.2f,%.2f target x,y: %.2f,%.2f", render_context.camera.rect.x, render_context.camera.rect.y,
-//       &render_context.camera.target.x, render_context.camera.target.y
-//   );
-//   FRect selection_rect = get_selection_rect(mouse_state);
-//   draw_debug_text(
-//       index++, "selection: current x,y: %.2f,%.2f target x,y: %.2f,%.2f", selection_rect.x, selection_rect.y,
-//       render_context.selection.target.x, render_context.selection.target.y
-//   );
-// }
-
-// void draw_selection_box(MouseState *mouse_state) {
-//   FRect selection_rect = get_selection_rect(mouse_state);
-
-//   if (selection_rect.w < 3.0f) {
-//     return;
-//   }
-
-//   SDL_FRect selection_rect_f = {
-//       .x = selection_rect.x,
-//       .y = selection_rect.y,
-//       .w = selection_rect.w,
-//       .h = selection_rect.h,
-//   };
-//   SDL_SetRenderDrawColor(render_context.renderer, 255, 255, 255, 255);
-//   int result = SDL_RenderDrawRectF(render_context.renderer, &selection_rect_f);
-//   assert(result == 0);
-// }
-
 // f32 Spring__update(Spring *spring, f32 target) {
 //   spring->target = target;
 //   spring->velocity += (target - spring->position) * spring->acceleration;
@@ -402,37 +357,6 @@ void draw_debug_text(int index, char *str, ...) {
 //     SDL_FRect rect = world_to_screen(&borders[i]);
 //     SDL_RenderFillRectF(render_context.renderer, &rect);
 //   }
-// }
-
-// void update_entity(int entity_id) {
-//   game_states.current_state.rect[entity_id].x += game_states.current_state.direction[entity_id].x * (render_context.delta_time * render_context.speed);
-//   game_states.current_state.rect[entity_id].y += game_states.current_state.direction[entity_id].y * (render_context.delta_time * render_context.speed);
-// }
-
-// void render_entity(int entity_id) {
-//   SDL_FRect rendering_rect = world_to_screen(&game_states.current_state.rect[entity_id]);
-
-//   draw_texture(game_states.current_state.image[entity_id], &rendering_rect);
-
-//   if (game_states.current_state.selected[entity_id]) {
-//     draw_border(game_states.current_state.rect[entity_id], 5.0f / render_context.camera.zoom, 4.0f / render_context.camera.zoom);
-//   }
-// }
-
-// Image Image__load(const char *texture_file_path) {
-//   SDL_Surface *surface = IMG_Load(texture_file_path);
-//   assert(surface);
-
-//   SDL_Texture *texture = SDL_CreateTextureFromSurface(render_context.renderer, surface);
-//   assert(texture);
-
-//   Image image = (Image){
-//       .h = surface->h,
-//       .w = surface->w,
-//       .texture = texture,
-//   };
-
-//   return image;
 // }
 
 // TTF_Font *Font__load(const char *font_file_path, int font_size) {
@@ -532,39 +456,6 @@ void draw_grid() {
 //   if (to_follow != INVALID_ENTITY) {
 //     render_context.camera.target.x = game_states.current_state.rect[to_follow].x + game_states.current_state.rect[to_follow].w / 2;
 //     render_context.camera.target.y = game_states.current_state.rect[to_follow].y + game_states.current_state.rect[to_follow].h / 2;
-//   }
-// }
-
-// // Set selected on any entity within the selection_rect
-// void select_entities_within_selection_rect(MouseState *mouse_state) {
-//   entity_loop(entity_i) {
-//     SDL_FRect rect = world_to_screen(&game_states.current_state.rect[entity_i]);
-//     SDL_FPoint point_top_left = {
-//         .x = rect.x,
-//         .y = rect.y,
-//     };
-//     SDL_FPoint point_bottom_right = {
-//         .x = rect.x + rect.w,
-//         .y = rect.y + rect.h,
-//     };
-
-//     // If the selection rect is bigger than 3 pixels, select the entity if it's within the selection rect
-//     FRect selection_rect = get_selection_rect(mouse_state);
-//     SDL_FRect sdl_frect = {
-//         .x = selection_rect.x,
-//         .y = selection_rect.y,
-//         .w = selection_rect.w,
-//         .h = selection_rect.h,
-//     };
-//     if (selection_rect.w > 3.0f) {
-//       if (SDL_PointInFRect(&point_top_left, &sdl_frect) && SDL_PointInFRect(&point_bottom_right, &sdl_frect)) {
-//         game_states.current_state.selected[entity_i] = true;
-//       } else {
-//         if (!render_context.keyboard_state[SDL_GetScancodeFromKey(SDLK_LSHIFT)]) {
-//           game_states.current_state.selected[entity_i] = false;
-//         }
-//       }
-//     }
 //   }
 // }
 
@@ -734,41 +625,46 @@ void system_draw_selected_boxes(PositionComponent* position, TextureComponent* t
     //   |-----------|
     //         2
 
-    u32 border_width = 3;
+    f32 border_width = 3.0f;
 
     //Surely we can solve this with some maths
     borders[0].a.x = position->current_position.x;
     borders[0].a.y = position->current_position.y;
-    borders[0].b.x = texture->dimensions.x;
-    borders[0].b.y = (f32)border_width;
+    borders[0].b.x = position->current_position.x + texture->dimensions.x;
+    borders[0].b.y = position->current_position.y + (f32)border_width;
     borders[0] = frect_world_to_screen(borders[0]);
 
-    borders[1].a.x = position->current_position.x + texture->dimensions.x - (f32)border_width;
+    borders[1].a.x = position->current_position.x + texture->dimensions.x - border_width;
     borders[1].a.y = position->current_position.y;
-    borders[1].b.x = (f32)border_width;
-    borders[1].b.y = texture->dimensions.y;
-    borders[0] = frect_world_to_screen(borders[1]);
+    borders[1].b.x = position->current_position.x + texture->dimensions.x;
+    borders[1].b.y = position->current_position.y + texture->dimensions.y;
+    borders[1] = frect_world_to_screen(borders[1]);
 
     borders[2].a.x = position->current_position.x;
     borders[2].a.y = position->current_position.y + texture->dimensions.y;
-    borders[2].b.x = texture->dimensions.x;
-    borders[2].b.y = (f32)border_width;
-    borders[0] = frect_world_to_screen(borders[2]);
+    borders[2].b.x = position->current_position.x + texture->dimensions.x;
+    borders[2].b.y = position->current_position.y + texture->dimensions.y + border_width;
+    borders[2] = frect_world_to_screen(borders[2]);
 
     borders[3].a.x = position->current_position.x;
     borders[3].a.y = position->current_position.y;
-    borders[3].b.x = (f32)border_width;
-    borders[3].b.y = texture->dimensions.y;
-    borders[0] = frect_world_to_screen(borders[3]);
+    borders[3].b.x = position->current_position.x + border_width;
+    borders[3].b.y = position->current_position.y + texture->dimensions.y;
+    borders[3] = frect_world_to_screen(borders[3]);
 
     for(u32 border_index = 0; border_index < array_count(borders); ++border_index) {
       SDL_FRect sdl_border = {
         .x = borders[border_index].a.x,
-        .y = borders[border_index].a.y,
-        .w = frect_width(&borders[border_index]),
-        .h = frect_height(&borders[border_index])
-      }; 
-      
+        .y = borders[border_index].a.y
+      };
+      if(border_index % 2 == 0) {
+        sdl_border.w = frect_width(&borders[border_index]);
+        sdl_border.h = border_width;
+      } else {
+        sdl_border.w = border_width;
+        sdl_border.h = frect_height(&borders[border_index]);
+      }
+
       SDL_SetRenderDrawColor(render_context.renderer, 255, 0, 0, 255);
       SDL_RenderFillRectF(render_context.renderer, &sdl_border);
     }
@@ -794,7 +690,7 @@ void render_clear() {
   SDL_RenderClear(render_context.renderer);
 }
 
-void normalize_selection_rect(FRect* selection_rect) {
+FRect normalize_selection_rect(FRect* selection_rect) {
     //The values of selection.end will correspond with the following traits below if they lie within that quadrant.
     //For example, if selection.end.x > selection.start.x && selection.end.y > selection.start.y then the end point lies within quadrant 4
     //We must transmute the rectangle so that, regardless of which quadrant the selection.end resides in, 
@@ -836,7 +732,11 @@ void normalize_selection_rect(FRect* selection_rect) {
       normalized_rect.a.y = selection_rect->b.y;
       normalized_rect.b.x = selection_rect->b.x;
       normalized_rect.b.y = selection_rect->a.y;
+    } else {
+      normalized_rect = *selection_rect;
     }
+
+    return normalized_rect;
 }
 
 void debug_draw_info() {
@@ -962,6 +862,15 @@ void create_entities() {
   }
 }
 
+void camera_update_position() {
+  if(render_context.mouse_state.current & SDL_BUTTON_MMASK) {
+    render_context.camera.position = (Vec2){
+      .x = (f32)render_context.mouse_state.position.x,
+      .y = (f32)render_context.mouse_state.position.y
+    };
+  }
+}
+
 void camera_update_zoom() {
   //printf("Mouse wheel: %d\n", render_context.mouse_state.wheel);
     f32 zoom_scaling_factor = 0.1f;
@@ -1024,6 +933,20 @@ void selection_update() {
       //printf("Dragging selection\n");
       render_context.selection.box.b.x = render_context.mouse_state.position.x;
       render_context.selection.box.b.y = render_context.mouse_state.position.y;
+
+      FRect selection_rect = {
+        .a = {
+          .x = (f32)render_context.selection.box.a.x,
+          .y = (f32)render_context.selection.box.a.y
+        },
+        .b = {
+          .x = (f32)render_context.selection.box.b.x,
+          .y = (f32)render_context.selection.box.b.y
+        }
+      };
+
+      FRect normalized_rect = normalize_selection_rect(&selection_rect);
+      entities_select_from_rect(&normalized_rect);
     }
   }
   if((render_context.mouse_state.previous & SDL_BUTTON_LMASK) && !(render_context.mouse_state.current & SDL_BUTTON_LMASK)) {
@@ -1135,6 +1058,7 @@ int main(int argc, char *args[]) {
         case SDL_MOUSEBUTTONUP: {
           render_context.mouse_state.previous = render_context.mouse_state.current;
           render_context.mouse_state.current = SDL_GetMouseState(&render_context.mouse_state.position.x, &render_context.mouse_state.position.y);
+          camera_update_position();
           selection_update();
         } break;
         case SDL_MOUSEWHEEL: {
